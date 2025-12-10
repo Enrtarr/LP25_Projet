@@ -9,7 +9,7 @@
 static void print_help(const char *prog)
 {
     printf("Usage: %s [options]\n", prog);
-    printf("Local-only process manager (simple_manager).\n\n");
+    printf("Local-only process manager (process_manager).\n\n");
     printf("Options:\n");
     printf("  -h, --help   Show this help and exit.\n");
     printf("  --dry-run    Test local process listing then exit.\n");
@@ -177,6 +177,13 @@ int main(int argc, char **argv)
         int action = ui_input(&ctx);
 
         switch (action) {
+
+            case KEY_F(1): // HELP
+               ui_show_help_screen(&ctx);
+               break;
+           case KEY_F(4): // SEARCH
+               ui_search_process_by_name(&ctx);
+               break;
             case KEY_F(5): // STOP
                 send_signal_selected(&ctx, SIGSTOP);
                 refresh_local(&ctx);
@@ -193,7 +200,7 @@ int main(int argc, char **argv)
                 send_signal_selected(&ctx, SIGCONT);
                 refresh_local(&ctx);
                 break;
-            case KEY_F(9): // Rafraichisement forcer de la liste
+            case KEY_F(9): // Refresh process list
                 refresh_local(&ctx);
                 break;
             default:

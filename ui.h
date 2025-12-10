@@ -22,7 +22,8 @@ typedef struct {
 void ui_init(void);
 void ui_clean(void);
 void ui_draw(ui_context_t *ctx);
-int ui_input(ui_context_t *ctx);
+int  ui_input(ui_context_t *ctx);
+void ui_show_help_screen(const ui_context_t *ctx);
+void ui_search_process_by_name(ui_context_t *ctx);
 
 #endif
-
