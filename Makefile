@@ -1,15 +1,16 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
+CFLAGS = -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L
 LDFLAGS = -lncurses
 
-SRC = ui.c main.c
+SRC = main.c ui.c process.c
 OBJ = $(SRC:.c=.o)
-EXEC = simple_manager
+EXEC = process_manager
 
 all: $(EXEC)
 
 $(EXEC): $(OBJ)
-	$(CC) $(OBJ) -o $(EXEC) $(LDFLAGS)
+	$(CC) $(CFLAGS) $(OBJ) -o $(EXEC) $(LDFLAGS)
 
 clean:
 	rm -f $(OBJ) $(EXEC)
+

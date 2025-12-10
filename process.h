@@ -1,6 +1,8 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
+#include <stddef.h>
+
 typedef struct {
     int pid;
     char user[32];
@@ -19,8 +21,10 @@ typedef struct {
     process_elem *head;
 } process_list;
 
-process_info_t get_process_info(struct dirent *dir); 
-process_list *create_process_list();
+/* Crée une liste chainée contenant les processus locaux */
+process_list *create_process_list(void);
+
+/* Libère toute la mémoire associée à la liste chainée */
 void free_process_list(process_list *list);
 
 #endif

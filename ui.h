@@ -2,15 +2,7 @@
 #define UI_H
 
 #include <ncurses.h>
-
-typedef struct {
-    int pid;
-    char user[32];
-    double cpu_usage;
-    double mem_usage;
-    char command[256];
-    char state;
-} process_info_t;
+#include "process.h"
 
 typedef struct {
     char hostname[64];
@@ -33,3 +25,4 @@ void ui_draw(ui_context_t *ctx);
 int ui_input(ui_context_t *ctx);
 
 #endif
+
