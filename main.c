@@ -6,15 +6,17 @@
 #include "ui.h"
 #include "process.h"
 
+// In english please
 static void print_help(const char *prog)
 {
     printf("Usage: %s [options]\n", prog);
     printf("Local-only process manager (process_manager).\n\n");
     printf("Options:\n");
-    printf("  -h, --help   Show this help and exit.\n");
-    printf("  --dry-run    Test local process listing then exit.\n");
+    printf("  -h, --help        Show this help and exit.\n");
+    printf("  --dry-run         Test local process listing then exit.\n");
 }
 
+// Refresh the local process list and update the UI context
 static int refresh_local(ui_context_t *ctx)
 {
     if (!ctx || ctx->tab_count == 0 || !ctx->tabs) {
@@ -22,7 +24,6 @@ static int refresh_local(ui_context_t *ctx)
     }
 
     machine_tab_t *tab = &ctx->tabs[0];
-
     process_list *list = create_process_list();
     if (!list) {
         return -1;
@@ -50,6 +51,7 @@ static int refresh_local(ui_context_t *ctx)
     if (count == 0) {
         free_process_list(list);
         tab->selected_proc_index = 0;
+        ctx->scroll_offset = 0;
         return 0;
     }
 
@@ -59,8 +61,8 @@ static int refresh_local(ui_context_t *ctx)
         free_process_list(list);
         return -1;
     }
-    tab->process_count = count;
 
+    tab->process_count = count;
     cur = list->head;
     int i = 0;
     while (cur && i < count) {
@@ -70,8 +72,8 @@ static int refresh_local(ui_context_t *ctx)
     }
 
     free_process_list(list);
-
     tab->selected_proc_index = 0;
+
     if (old_selected_pid != -1) {
         for (i = 0; i < tab->process_count; ++i) {
             if (tab->processes[i].pid == old_selected_pid) {
@@ -79,19 +81,19 @@ static int refresh_local(ui_context_t *ctx)
                 break;
             }
         }
-    }
-    if (tab->selected_proc_index >= tab->process_count) {
-        tab->selected_proc_index = tab->process_count - 1;
-    }
-    if (tab->selected_proc_index < 0) {
-        tab->selected_proc_index = 0;
+        if (tab->selected_proc_index >= tab->process_count) {
+            tab->selected_proc_index = tab->process_count - 1;
+        }
+        if (tab->selected_proc_index < 0) {
+            tab->selected_proc_index = 0;
+        }
     }
 
     ctx->scroll_offset = 0;
-
     return 0;
 }
 
+// Initialize UI context for local machine
 static int init_local_context(ui_context_t *ctx)
 {
     memset(ctx, 0, sizeof(*ctx));
@@ -110,6 +112,9 @@ static int init_local_context(ui_context_t *ctx)
     machine_tab_t *tab = &ctx->tabs[0];
     memset(tab, 0, sizeof(*tab));
     snprintf(tab->hostname, sizeof(tab->hostname), "Local");
+    tab->processes = NULL;
+    tab->process_count = 0;
+    tab->selected_proc_index = 0;
 
     if (refresh_local(ctx) != 0) {
         fprintf(stderr, "Unable to get local process list.\n");
@@ -122,6 +127,7 @@ static int init_local_context(ui_context_t *ctx)
     return 0;
 }
 
+// Send a signal to the selected process in the UI context
 static void send_signal_selected(ui_context_t *ctx, int signum)
 {
     if (!ctx || ctx->tab_count == 0 || !ctx->tabs) {
@@ -129,7 +135,6 @@ static void send_signal_selected(ui_context_t *ctx, int signum)
     }
 
     machine_tab_t *tab = &ctx->tabs[ctx->current_tab_index];
-
     if (tab->process_count == 0 ||
         tab->selected_proc_index < 0 ||
         tab->selected_proc_index >= tab->process_count) {
@@ -138,9 +143,10 @@ static void send_signal_selected(ui_context_t *ctx, int signum)
 
     int pid = tab->processes[tab->selected_proc_index].pid;
     if (kill(pid, signum) == -1) {
-        // Management si la fonction echoue
+        perror("kill");
     }
 }
+
 
 int main(int argc, char **argv)
 {
@@ -172,40 +178,38 @@ int main(int argc, char **argv)
 
     ui_init();
 
+    // Keybind gestion loop
     while (ctx.running) {
         ui_draw(&ctx);
         int action = ui_input(&ctx);
-
         switch (action) {
-
-            case KEY_F(1): // HELP
-               ui_show_help_screen(&ctx);
-               break;
-           case KEY_F(4): // SEARCH
-               ui_search_process_by_name(&ctx);
-               break;
-            case KEY_F(5): // STOP
-                send_signal_selected(&ctx, SIGSTOP);
-                refresh_local(&ctx);
-                break;
-            case KEY_F(6): // TERM
-                send_signal_selected(&ctx, SIGTERM);
-                refresh_local(&ctx);
-                break;
-            case KEY_F(7): // KILL
-                send_signal_selected(&ctx, SIGKILL);
-                refresh_local(&ctx);
-                break;
-            case KEY_F(8): // CONT
-                send_signal_selected(&ctx, SIGCONT);
-                refresh_local(&ctx);
-                break;
-            case KEY_F(9): // Refresh process list
-                refresh_local(&ctx);
-                break;
-            default:
-                // Rafraichisement periodique ?
-                break;
+        case KEY_F(1):
+            ui_show_help_screen(&ctx);
+            break;
+        case KEY_F(4):
+            ui_search_process_by_name(&ctx);
+            break;
+        case KEY_F(5):
+            send_signal_selected(&ctx, SIGSTOP);
+            refresh_local(&ctx);
+            break;
+        case KEY_F(6):
+            send_signal_selected(&ctx, SIGTERM);
+            refresh_local(&ctx);
+            break;
+        case KEY_F(7):
+            send_signal_selected(&ctx, SIGKILL);
+            refresh_local(&ctx);
+            break;
+        case KEY_F(8):
+            send_signal_selected(&ctx, SIGCONT);
+            refresh_local(&ctx);
+            break;
+        case KEY_F(9):
+            refresh_local(&ctx);
+            break;
+        default:
+            break;
         }
     }
 
@@ -220,4 +224,3 @@ int main(int argc, char **argv)
 
     return EXIT_SUCCESS;
 }
-
