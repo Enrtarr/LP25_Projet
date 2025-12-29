@@ -1,29 +1,17 @@
 #include "ui.h"
+
 #include <string.h>
 
+// Draw the header of the UI
 static void draw_header(int width)
 {
     mvhline(0, 0, '-', width);
     mvprintw(0, 2, " Process Manager (Local version) ");
     mvhline(2, 0, '-', width);
-    mvprintw(1, 0, "PID      USER            %%CPU   %%MEM   S  COMMAND");
+    mvprintw(1, 0, "PID      USER            %CPU   %MEM  S  COMMAND");
 }
 
-static void draw_tabs(ui_context_t *ctx, int width)
-{
-    mvhline(0, 0, ' ', width);
-    for (int i = 0; i < ctx->tab_count; ++i) {
-        int x = 2 + i * 15;
-        if (i == ctx->current_tab_index) {
-            attron(A_REVERSE);
-            mvprintw(0, x, "[%s]", ctx->tabs[i].hostname);
-            attroff(A_REVERSE);
-        } else {
-            mvprintw(0, x, " %s ", ctx->tabs[i].hostname);
-        }
-    }
-}
-
+// Initialize the UI context
 void ui_init(void)
 {
     initscr();
@@ -33,18 +21,19 @@ void ui_init(void)
     curs_set(0);
 }
 
+// Clean up the UI context
 void ui_clean(void)
 {
     endwin();
 }
 
+// Draw the UI context
 void ui_draw(ui_context_t *ctx)
 {
     int height, width;
     getmaxyx(stdscr, height, width);
-    clear();
 
-    draw_tabs(ctx, width);
+    clear();
     draw_header(width);
 
     if (ctx->tab_count == 0) {
@@ -71,7 +60,7 @@ void ui_draw(ui_context_t *ctx)
             attron(A_REVERSE);
         }
 
-        mvprintw(y, 0, "%-8d %-15s %6.2f %6.2f %2c  %-s",
+        mvprintw(y, 0, "%-8d %-15s %6.2f %6.2f %2c %-s",
                  p->pid,
                  p->user,
                  p->cpu_usage,
@@ -86,11 +75,12 @@ void ui_draw(ui_context_t *ctx)
 
     mvhline(height - 1, 0, '-', width);
     mvprintw(height - 1, 2,
-             "F1:HELP  F4:RESEARCH  F5:STOP  F6:TERM  F7:KILL  F8:CONT  F9:REFRESH      q:quit");
+             "F1:HELP F4:RESEARCH F5:STOP F6:TERM F7:KILL F8:CONT F9:REFRESH q:quit");
 
     refresh();
 }
 
+// Show the help screen
 void ui_show_help_screen(const ui_context_t *ctx)
 {
     (void)ctx;
@@ -99,7 +89,7 @@ void ui_show_help_screen(const ui_context_t *ctx)
     getmaxyx(stdscr, height, width);
 
     int box_height = 13;
-    int box_width  = (width > 70) ? 70 : width - 4;
+    int box_width = (width > 70) ? 70 : width - 4;
     if (box_width < 40) {
         box_width = width - 2;
     }
@@ -116,22 +106,22 @@ void ui_show_help_screen(const ui_context_t *ctx)
 
     box(win, 0, 0);
     mvwprintw(win, 1, 2, "Help - Keyboard Shortcuts");
-
-    mvwprintw(win, 3,  2, "F1  : show this help");
-    mvwprintw(win, 4,  2, "F4  : search a process by name (command)");
-    mvwprintw(win, 5,  2, "F5  : send SIGSTOP (pause the process)");
-    mvwprintw(win, 6,  2, "F6  : send SIGTERM (graceful termination)");
-    mvwprintw(win, 7,  2, "F7  : send SIGKILL (immediate kill)");
-    mvwprintw(win, 8,  2, "F8  : send SIGCONT (resume)");
-    mvwprintw(win, 9,  2, "F9  : refresh the process list");
-    mvwprintw(win, 10, 2, "q   : quit the program");
+    mvwprintw(win, 3, 2, "F1 : show this help");
+    mvwprintw(win, 4, 2, "F4 : search a process by name (command)");
+    mvwprintw(win, 5, 2, "F5 : send SIGSTOP (pause the process)");
+    mvwprintw(win, 6, 2, "F6 : send SIGTERM (graceful termination)");
+    mvwprintw(win, 7, 2, "F7 : send SIGKILL (immediate kill)");
+    mvwprintw(win, 8, 2, "F8 : send SIGCONT (resume)");
+    mvwprintw(win, 9, 2, "F9 : refresh the process list");
+    mvwprintw(win, 10, 2, "q  : quit the program");
     mvwprintw(win, box_height - 2, 2, "Press any key to close help...");
-    wrefresh(win);
 
+    wrefresh(win);
     wgetch(win);
     delwin(win);
 }
 
+// Search for a process by name (command)
 void ui_search_process_by_name(ui_context_t *ctx)
 {
     if (!ctx || ctx->tab_count == 0 || !ctx->tabs) {
@@ -150,7 +140,6 @@ void ui_search_process_by_name(ui_context_t *ctx)
     memset(query, 0, sizeof(query));
     int len = 0;
     int ch;
-
     const char *prompt = "Search (command) : ";
 
     curs_set(1);
@@ -188,7 +177,7 @@ void ui_search_process_by_name(ui_context_t *ctx)
     int found = -1;
     for (int i = 0; i < tab->process_count; ++i) {
         const char *cmd = tab->processes[i].command;
-        if (cmd && strstr(cmd, query) != NULL) { 
+        if (cmd && strstr(cmd, query) != NULL) {
             found = i;
             break;
         }
@@ -210,14 +199,17 @@ void ui_search_process_by_name(ui_context_t *ctx)
     } else {
         move(height - 2, 0);
         clrtoeol();
-        mvprintw(height - 2, 2, "No process contains \"%s\" in its command.", query);
+        mvprintw(height - 2, 2,
+                 "No process contains \"%s\" in its command.", query);
         refresh();
     }
 }
 
+// Handle user input and return action code
 int ui_input(ui_context_t *ctx)
 {
     int ch = getch();
+
     if (ctx->tab_count == 0) {
         if (ch == 'q' || ch == KEY_F(10)) {
             ctx->running = 0;
@@ -234,73 +226,51 @@ int ui_input(ui_context_t *ctx)
     if (max_rows < 1) max_rows = 1;
 
     switch (ch) {
-        case 'q':
-        case KEY_F(10):
-            ctx->running = 0;
-            break;
-
-        case KEY_F(2):
-            ctx->current_tab_index++;
-            if (ctx->current_tab_index >= ctx->tab_count) {
-                ctx->current_tab_index = 0;
+    case 'q':
+    case KEY_F(10):
+        ctx->running = 0;
+        break;
+    case KEY_DOWN:
+        if (tab->selected_proc_index < tab->process_count - 1) {
+            tab->selected_proc_index++;
+            if (tab->selected_proc_index >= ctx->scroll_offset + max_rows) {
+                ctx->scroll_offset++;
             }
-            ctx->scroll_offset = 0;
-            break;
-
-        case KEY_F(3):
-            ctx->current_tab_index--;
-            if (ctx->current_tab_index < 0) {
-                ctx->current_tab_index = ctx->tab_count - 1;
+        }
+        break;
+    case KEY_UP:
+        if (tab->selected_proc_index > 0) {
+            tab->selected_proc_index--;
+            if (tab->selected_proc_index < ctx->scroll_offset) {
+                ctx->scroll_offset--;
+                if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
             }
-            ctx->scroll_offset = 0;
-            break;
-
-        case KEY_DOWN:
-            if (tab->selected_proc_index < tab->process_count - 1) {
-                tab->selected_proc_index++;
-                if (tab->selected_proc_index >= ctx->scroll_offset + max_rows) {
-                    ctx->scroll_offset++;
-                }
-            }
-            break;
-
-        case KEY_UP:
-            if (tab->selected_proc_index > 0) {
-                tab->selected_proc_index--;
-                if (tab->selected_proc_index < ctx->scroll_offset) {
-                    ctx->scroll_offset--;
-                    if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
-                }
-            }
-            break;
-
-        case KEY_NPAGE:
-            tab->selected_proc_index += max_rows;
-            if (tab->selected_proc_index >= tab->process_count) {
-                tab->selected_proc_index = tab->process_count - 1;
-            }
-            ctx->scroll_offset = tab->selected_proc_index - max_rows + 1;
-            if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
-            break;
-
-        case KEY_PPAGE:
-            tab->selected_proc_index -= max_rows;
-            if (tab->selected_proc_index < 0) tab->selected_proc_index = 0;
-            ctx->scroll_offset = tab->selected_proc_index;
-            if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
-            break;
-
-        case KEY_F(1):
-        case KEY_F(4): 
-        case KEY_F(5):
-        case KEY_F(6):
-        case KEY_F(7):
-        case KEY_F(8):
-        case KEY_F(9):
-            return ch;
-
-        default:
-            break;
+        }
+        break;
+    case KEY_NPAGE:
+        tab->selected_proc_index += max_rows;
+        if (tab->selected_proc_index >= tab->process_count) {
+            tab->selected_proc_index = tab->process_count - 1;
+        }
+        ctx->scroll_offset = tab->selected_proc_index - max_rows + 1;
+        if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
+        break;
+    case KEY_PPAGE:
+        tab->selected_proc_index -= max_rows;
+        if (tab->selected_proc_index < 0) tab->selected_proc_index = 0;
+        ctx->scroll_offset = tab->selected_proc_index;
+        if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
+        break;
+    case KEY_F(1):
+    case KEY_F(4):
+    case KEY_F(5):
+    case KEY_F(6):
+    case KEY_F(7):
+    case KEY_F(8):
+    case KEY_F(9):
+        return ch;
+    default:
+        break;
     }
 
     return 0;
