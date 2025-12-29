@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L
+CFLAGS = -Wall -Wextra -g
 LDFLAGS = -lncurses
 
 SRC = main.c ui.c process.c
