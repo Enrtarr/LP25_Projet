@@ -1,22 +1,28 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <getopt.h>
 
 #include "ui.h"
 #include "process.h"
+#include "network.h"
 
-// In english please
 static void print_help(const char *prog)
 {
     printf("Usage: %s [options]\n", prog);
-    printf("Local-only process manager (process_manager).\n\n");
+    printf("Local-only process manager (process_manager) with early network options.\n\n");
     printf("Options:\n");
-    printf("  -h, --help        Show this help and exit.\n");
-    printf("  --dry-run         Test local process listing then exit.\n");
+    printf("  -h, --help             Show this help and exit.\n");
+    printf("      --dry-run          Test local process listing then exit.\n");
+    printf("  -c, --remote-config F  Load remote servers from config file.\n");
+    printf("  -s, --remote-server H  Add one remote server (host name).\n");
+    printf("  -u, --username USER    Username for remote server.\n");
+    printf("  -p, --password PASS    Password stored but not yet used.\n");
 }
 
-// Refresh the local process list and update the UI context
 static int refresh_local(ui_context_t *ctx)
 {
     if (!ctx || ctx->tab_count == 0 || !ctx->tabs) {
@@ -93,7 +99,6 @@ static int refresh_local(ui_context_t *ctx)
     return 0;
 }
 
-// Initialize UI context for local machine
 static int init_local_context(ui_context_t *ctx)
 {
     memset(ctx, 0, sizeof(*ctx));
@@ -127,7 +132,6 @@ static int init_local_context(ui_context_t *ctx)
     return 0;
 }
 
-// Send a signal to the selected process in the UI context
 static void send_signal_selected(ui_context_t *ctx, int signum)
 {
     if (!ctx || ctx->tab_count == 0 || !ctx->tabs) {
@@ -147,38 +151,83 @@ static void send_signal_selected(ui_context_t *ctx, int signum)
     }
 }
 
+static struct option long_options[] = {
+    {"help",          no_argument,       0, 'h'},
+    {"dry-run",       no_argument,       0,  1 },
+    {"remote-config", required_argument, 0, 'c'},
+    {"remote-server", required_argument, 0, 's'},
+    {"username",      required_argument, 0, 'u'},
+    {"password",      required_argument, 0, 'p'},
+    {0, 0, 0, 0}
+};
 
 int main(int argc, char **argv)
 {
     ui_context_t ctx;
+    remotemachine_t *remotes = NULL;
+    size_t remote_count = 0;
+    char *conf_path = NULL;
+    char *cli_server = NULL;
+    char *cli_user = NULL;
+    char *cli_pass = NULL;
 
-    if (argc > 1) {
-        if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+    int dry_run = 0;
+    int opt, opt_index = 0;
+
+    while ((opt = getopt_long(argc, argv, "hc:s:u:p:", long_options, &opt_index)) != -1) {
+        switch (opt) {
+        case 'h':
             print_help(argv[0]);
             return EXIT_SUCCESS;
-        } else if (strcmp(argv[1], "--dry-run") == 0) {
-            process_list *list = create_process_list();
-            if (!list) {
-                fprintf(stderr, "Failed to get process list.\n");
-                return EXIT_FAILURE;
-            }
-            free_process_list(list);
-            printf("Local process listing: OK\n");
-            return EXIT_SUCCESS;
-        } else {
-            fprintf(stderr, "Unknown option: %s\n\n", argv[1]);
+        case 1:
+            dry_run = 1;
+            break;
+        case 'c':
+            conf_path = optarg;
+            break;
+        case 's':
+            cli_server = optarg;
+            break;
+        case 'u':
+            cli_user = optarg;
+            break;
+        case 'p':
+            cli_pass = optarg;
+            break;
+        default:
             print_help(argv[0]);
             return EXIT_FAILURE;
         }
     }
 
+    if (dry_run) {
+        process_list *list = create_process_list();
+        if (!list) {
+            fprintf(stderr, "Failed to get process list.\n");
+            return EXIT_FAILURE;
+        }
+        free_process_list(list);
+        printf("Local process listing: OK\n");
+        return EXIT_SUCCESS;
+    }
+
+    if (conf_path) {
+        load_remote_config(conf_path, &remotes, &remote_count);
+    }
+
+    if (cli_server) {
+        add_remote_machine(&remotes, &remote_count,
+                           cli_server, cli_server, 22,
+                           cli_user, cli_pass, "ssh");
+    }
+
     if (init_local_context(&ctx) != 0) {
+        free(remotes);
         return EXIT_FAILURE;
     }
 
     ui_init();
 
-    // Keybind gestion loop
     while (ctx.running) {
         ui_draw(&ctx);
         int action = ui_input(&ctx);
@@ -222,5 +271,6 @@ int main(int argc, char **argv)
         free(ctx.tabs);
     }
 
+    free(remotes);
     return EXIT_SUCCESS;
 }

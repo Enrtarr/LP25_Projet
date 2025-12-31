@@ -1,16 +1,20 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -g
+CC      = gcc
+CFLAGS  = -Wall -Wextra -std=c11 -g
 LDFLAGS = -lncurses
 
-SRC = main.c ui.c process.c
+SRC = main.c ui.c process.c network.c
 OBJ = $(SRC:.c=.o)
-EXEC = process_manager
+BIN = process_manager
 
-all: $(EXEC)
+all: $(BIN)
 
-$(EXEC): $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) -o $(EXEC) $(LDFLAGS)
+$(BIN): $(OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJ) $(EXEC)
+	rm -f $(OBJ) $(BIN)
 
+.PHONY: all clean
