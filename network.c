@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 static int ensure_capacity(remotemachine_t **machines,
                            size_t *cap,
@@ -16,9 +17,7 @@ static int ensure_capacity(remotemachine_t **machines,
     while (newcap < needed) newcap *= 2;
 
     remotemachine_t *tmp = realloc(*machines, newcap * sizeof(remotemachine_t));
-    if (!tmp) {
-        return -1;
-    }
+    if (!tmp) return -1;
 
     *machines = tmp;
     *cap = newcap;
@@ -35,7 +34,6 @@ int add_remote_machine(remotemachine_t **machines,
                        const char *type)
 {
     static size_t cap = 0;
-
     if (ensure_capacity(machines, &cap, *count + 1) != 0) {
         perror("realloc");
         return -1;
@@ -95,4 +93,61 @@ int load_remote_config(const char *path,
     free(line);
     fclose(f);
     return 0;
+}
+
+process_list *fetch_remote_processes(const remotemachine_t *m)
+{
+    char cmd[512];
+
+    if (m->type[0] != '\0' && strcmp(m->type, "ssh") != 0) {
+        fprintf(stderr, "Unsupported remote type: %s\n", m->type);
+        return NULL;
+    }
+
+    if (m->username[0] != '\0') {
+        snprintf(cmd, sizeof(cmd),
+                 "ssh -p %d %s@%s \"ps -eo pid,user,pcpu,pmem,stat,comm\" 2>/dev/null",
+                 m->port, m->username, m->host);
+    } else {
+        snprintf(cmd, sizeof(cmd),
+                 "ssh -p %d %s \"ps -eo pid,user,pcpu,pmem,stat,comm\" 2>/dev/null",
+                 m->port, m->host);
+    }
+
+    FILE *fp = popen(cmd, "r");
+    if (!fp) {
+        perror("popen ssh");
+        return NULL;
+    }
+
+    process_list *list = create_process_list_from_stream(fp);
+    pclose(fp);
+    return list;
+}
+
+int send_remote_signal(const remotemachine_t *m, int pid, int signum)
+{
+    char sig_str[10];
+
+    switch (signum) {
+    case SIGSTOP: strcpy(sig_str, "-STOP"); break;
+    case SIGTERM: strcpy(sig_str, "-TERM"); break;
+    case SIGKILL: strcpy(sig_str, "-KILL"); break;
+    case SIGCONT: strcpy(sig_str, "-CONT"); break;
+    default: return -1;
+    }
+
+    char cmd[512];
+
+    if (m->username[0] != '\0') {
+        snprintf(cmd, sizeof(cmd),
+                 "ssh -p %d %s@%s \"kill %s %d\" >/dev/null 2>&1",
+                 m->port, m->username, m->host, sig_str, pid);
+    } else {
+        snprintf(cmd, sizeof(cmd),
+                 "ssh -p %d %s \"kill %s %d\" >/dev/null 2>&1",
+                 m->port, m->host, sig_str, pid);
+    }
+
+    return system(cmd);
 }
