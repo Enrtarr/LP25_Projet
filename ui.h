@@ -4,7 +4,6 @@
 #include <ncurses.h>
 #include "process.h"
 
-/* Machine tab structure */
 typedef struct {
     char hostname[64];
     process_info_t *processes;
@@ -12,7 +11,6 @@ typedef struct {
     int selected_proc_index;
 } machine_tab_t;
 
-/* UI context structure */
 typedef struct {
     machine_tab_t *tabs;
     int tab_count;
