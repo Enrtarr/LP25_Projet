@@ -2,7 +2,6 @@
 #define NETWORK_H
 
 #include "process.h"
-#include <stddef.h>
 
 typedef struct {
     char name[64];
@@ -10,7 +9,7 @@ typedef struct {
     int  port;
     char username[64];
     char password[64];
-    char type[16];
+    char type[16];      /* "ssh" ici */
 } remotemachine_t;
 
 int load_remote_config(const char *path,

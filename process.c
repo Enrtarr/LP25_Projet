@@ -1,14 +1,15 @@
 #include "process.h"
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <dirent.h>
 #include <errno.h>
 #include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
 
+#define MAX_CMD_LEN 256
 #define MAX_BUF_LEN 128
 
-// Helper function to get process info from /proc/[pid] directory
 static process_info_t get_process_info(struct dirent *dir)
 {
     process_info_t process;
@@ -20,15 +21,13 @@ static process_info_t get_process_info(struct dirent *dir)
     FILE *file;
     char bash_line[MAX_BUF_LEN];
 
+    // USER
     snprintf(bash_line, sizeof(bash_line),
              "ps -p %d -o user= 2>/dev/null", pid);
     file = popen(bash_line, "r");
     if (file != NULL) {
         if (fgets(process.user, sizeof(process.user), file) != NULL) {
             process.user[strcspn(process.user, "\n")] = '\0';
-        } else {
-            strncpy(process.user, "unknown", sizeof(process.user));
-            process.user[sizeof(process.user) - 1] = '\0';
         }
         pclose(file);
     } else {
@@ -36,6 +35,7 @@ static process_info_t get_process_info(struct dirent *dir)
         process.user[sizeof(process.user) - 1] = '\0';
     }
 
+    // %CPU
     snprintf(bash_line, sizeof(bash_line),
              "ps -p %d -o pcpu= 2>/dev/null", pid);
     file = popen(bash_line, "r");
@@ -47,6 +47,7 @@ static process_info_t get_process_info(struct dirent *dir)
         pclose(file);
     }
 
+    // %MEM
     snprintf(bash_line, sizeof(bash_line),
              "ps -p %d -o pmem= 2>/dev/null", pid);
     file = popen(bash_line, "r");
@@ -58,15 +59,13 @@ static process_info_t get_process_info(struct dirent *dir)
         pclose(file);
     }
 
+    // COMMAND
     snprintf(bash_line, sizeof(bash_line),
              "ps -p %d -o comm= 2>/dev/null", pid);
     file = popen(bash_line, "r");
     if (file != NULL) {
         if (fgets(process.command, sizeof(process.command), file) != NULL) {
             process.command[strcspn(process.command, "\n")] = '\0';
-        } else {
-            strncpy(process.command, "unknown", sizeof(process.command));
-            process.command[sizeof(process.command) - 1] = '\0';
         }
         pclose(file);
     } else {
@@ -74,6 +73,7 @@ static process_info_t get_process_info(struct dirent *dir)
         process.command[sizeof(process.command) - 1] = '\0';
     }
 
+    // STATE
     snprintf(bash_line, sizeof(bash_line),
              "ps -p %d -o stat= 2>/dev/null", pid);
     file = popen(bash_line, "r");
@@ -81,8 +81,6 @@ static process_info_t get_process_info(struct dirent *dir)
         char buf[8];
         if (fgets(buf, sizeof(buf), file) != NULL) {
             process.state = buf[0];
-        } else {
-            process.state = 'u';
         }
         pclose(file);
     } else {
@@ -92,7 +90,6 @@ static process_info_t get_process_info(struct dirent *dir)
     return process;
 }
 
-// Create a process list by reading /proc directory
 process_list *create_process_list(void)
 {
     DIR *proc = opendir("/proc");
@@ -109,8 +106,8 @@ process_list *create_process_list(void)
     }
 
     list->head = NULL;
-
     struct dirent *entry;
+
     while ((entry = readdir(proc)) != NULL) {
         if (strspn(entry->d_name, "0123456789") != strlen(entry->d_name)) {
             continue;
@@ -140,7 +137,8 @@ process_list *create_process_list(void)
     return list;
 }
 
-// Helper function to trim whitespace from both ends of a string
+/* Helpers pour la version stream (remote/local ps -eo) */
+
 static void trim(char *s)
 {
     char *p = s;
@@ -154,7 +152,7 @@ static void trim(char *s)
     }
 }
 
-// Create a process list from a given file stream
+/* Parse la sortie de "ps -eo pid,user,pcpu,pmem,stat,comm" */
 process_list *create_process_list_from_stream(FILE *fp)
 {
     if (!fp) return NULL;
@@ -164,14 +162,14 @@ process_list *create_process_list_from_stream(FILE *fp)
         perror("malloc");
         return NULL;
     }
-
     list->head = NULL;
+
     char line[512];
     int first = 1;
 
     while (fgets(line, sizeof(line), fp)) {
         if (first) {
-            first = 0;
+            first = 0; /* sauter l'entête */
             continue;
         }
 
@@ -183,7 +181,6 @@ process_list *create_process_list_from_stream(FILE *fp)
             perror("malloc");
             continue;
         }
-
         memset(&elem->process, 0, sizeof(elem->process));
         elem->next = NULL;
 
@@ -201,7 +198,6 @@ process_list *create_process_list_from_stream(FILE *fp)
             free(elem);
             continue;
         }
-
         p->state = statbuf[0];
 
         if (!list->head) {
@@ -216,11 +212,9 @@ process_list *create_process_list_from_stream(FILE *fp)
     return list;
 }
 
-// Free the memory allocated for a process list
 void free_process_list(process_list *list)
 {
     if (!list) return;
-
     process_elem *cur = list->head;
     while (cur) {
         process_elem *next = cur->next;

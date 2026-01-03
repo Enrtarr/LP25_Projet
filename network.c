@@ -7,12 +7,9 @@
 #include <errno.h>
 #include <signal.h>
 
-static int ensure_capacity(remotemachine_t **machines,
-                           size_t *cap,
-                           size_t needed)
+static int ensure_capacity(remotemachine_t **machines, size_t *cap, size_t needed)
 {
     if (needed <= *cap) return 0;
-
     size_t newcap = (*cap == 0) ? 4 : *cap * 2;
     while (newcap < needed) newcap *= 2;
 
@@ -42,13 +39,13 @@ int add_remote_machine(remotemachine_t **machines,
     remotemachine_t *m = &(*machines)[*count];
     memset(m, 0, sizeof(*m));
 
-    if (name)     strncpy(m->name,     name,     sizeof(m->name) - 1);
-    if (host)     strncpy(m->host,     host,     sizeof(m->host) - 1);
+    if (name)     strncpy(m->name, name, sizeof(m->name) - 1);
+    if (host)     strncpy(m->host, host, sizeof(m->host) - 1);
     m->port = port > 0 ? port : 22;
     if (username) strncpy(m->username, username, sizeof(m->username) - 1);
     if (password) strncpy(m->password, password, sizeof(m->password) - 1);
-    if (type)     strncpy(m->type,     type,     sizeof(m->type) - 1);
-    else          strncpy(m->type,     "ssh",    sizeof(m->type) - 1);
+    if (type)     strncpy(m->type, type, sizeof(m->type) - 1);
+    else          strncpy(m->type, "ssh", sizeof(m->type) - 1);
 
     (*count)++;
     return 0;
@@ -75,6 +72,7 @@ int load_remote_config(const char *path,
         if (line[0] == '\0' || line[0] == '#')
             continue;
 
+        /* nom:adresse:port:user:pass:type */
         char *saveptr = NULL;
         char *name     = strtok_r(line, ":", &saveptr);
         char *addr     = strtok_r(NULL, ":", &saveptr);
@@ -122,23 +120,26 @@ process_list *fetch_remote_processes(const remotemachine_t *m)
 
     process_list *list = create_process_list_from_stream(fp);
     pclose(fp);
+
     return list;
 }
 
 int send_remote_signal(const remotemachine_t *m, int pid, int signum)
 {
     char sig_str[10];
-
+    
+    /* On convertit le signal entier en chaîne pour la commande kill */
     switch (signum) {
-    case SIGSTOP: strcpy(sig_str, "-STOP"); break;
-    case SIGTERM: strcpy(sig_str, "-TERM"); break;
-    case SIGKILL: strcpy(sig_str, "-KILL"); break;
-    case SIGCONT: strcpy(sig_str, "-CONT"); break;
-    default: return -1;
+        case SIGSTOP: strcpy(sig_str, "-STOP"); break;
+        case SIGTERM: strcpy(sig_str, "-TERM"); break;
+        case SIGKILL: strcpy(sig_str, "-KILL"); break;
+        case SIGCONT: strcpy(sig_str, "-CONT"); break;
+        default: return -1; /* Signal non supporté */
     }
 
     char cmd[512];
-
+    
+    /* Construction de la commande SSH : ssh user@host "kill -SIG PID" */
     if (m->username[0] != '\0') {
         snprintf(cmd, sizeof(cmd),
                  "ssh -p %d %s@%s \"kill %s %d\" >/dev/null 2>&1",
@@ -149,5 +150,6 @@ int send_remote_signal(const remotemachine_t *m, int pid, int signum)
                  m->port, m->host, sig_str, pid);
     }
 
+    /* system() exécute la commande et retourne son code de sortie */
     return system(cmd);
 }
