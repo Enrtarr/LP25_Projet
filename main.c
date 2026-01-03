@@ -1,5 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,14 +11,50 @@
 static void print_help(const char *prog)
 {
     printf("Usage: %s [options]\n", prog);
-    printf("Local-only process manager (process_manager) with early network options.\n\n");
+    printf("Network process manager (local + remote via ssh).\n\n");
     printf("Options:\n");
-    printf("  -h, --help             Show this help and exit.\n");
-    printf("      --dry-run          Test local process listing then exit.\n");
-    printf("  -c, --remote-config F  Load remote servers from config file.\n");
-    printf("  -s, --remote-server H  Add one remote server (host name).\n");
-    printf("  -u, --username USER    Username for remote server.\n");
-    printf("  -p, --password PASS    Password stored but not yet used.\n");
+    printf("  -h, --help               Show this help and exit.\n");
+    printf("      --dry-run            Test local process listing then exit.\n");
+    printf("  -c, --remote-config FILE Use remote config file.\n");
+    printf("  -s, --remote-server HOST Add one remote server.\n");
+    printf("  -u, --username USER      Username for remote server.\n");
+    printf("  -p, --password PASS      Password (stockée mais non passée à ssh).\n");
+    printf("  -a, --all                Show local and all remote machines.\n");
+}
+
+static int list_to_array(process_list *list, process_info_t **out)
+{
+    if (!list) return 0;
+
+    int count = 0;
+    process_elem *cur = list->head;
+    while (cur) {
+        count++;
+        cur = cur->next;
+    }
+
+    if (count == 0) {
+        *out = NULL;
+        return 0;
+    }
+
+    process_info_t *arr = malloc(sizeof(process_info_t) * (size_t)count);
+    if (!arr) {
+        perror("malloc processes");
+        *out = NULL;
+        return 0;
+    }
+
+    cur = list->head;
+    int i = 0;
+    while (cur && i < count) {
+        arr[i] = cur->process;
+        i++;
+        cur = cur->next;
+    }
+
+    *out = arr;
+    return count;
 }
 
 static int refresh_local(ui_context_t *ctx)
@@ -47,41 +81,12 @@ static int refresh_local(ui_context_t *ctx)
     tab->processes = NULL;
     tab->process_count = 0;
 
-    int count = 0;
-    process_elem *cur = list->head;
-    while (cur) {
-        count++;
-        cur = cur->next;
-    }
-
-    if (count == 0) {
-        free_process_list(list);
-        tab->selected_proc_index = 0;
-        ctx->scroll_offset = 0;
-        return 0;
-    }
-
-    tab->processes = malloc(sizeof(process_info_t) * (size_t)count);
-    if (!tab->processes) {
-        perror("malloc processes");
-        free_process_list(list);
-        return -1;
-    }
-
-    tab->process_count = count;
-    cur = list->head;
-    int i = 0;
-    while (cur && i < count) {
-        tab->processes[i] = cur->process;
-        i++;
-        cur = cur->next;
-    }
-
+    tab->process_count = list_to_array(list, &tab->processes);
     free_process_list(list);
-    tab->selected_proc_index = 0;
 
+    tab->selected_proc_index = 0;
     if (old_selected_pid != -1) {
-        for (i = 0; i < tab->process_count; ++i) {
+        for (int i = 0; i < tab->process_count; ++i) {
             if (tab->processes[i].pid == old_selected_pid) {
                 tab->selected_proc_index = i;
                 break;
@@ -99,40 +104,58 @@ static int refresh_local(ui_context_t *ctx)
     return 0;
 }
 
-static int init_local_context(ui_context_t *ctx)
+static int refresh_remote_tab(ui_context_t *ctx,
+                              int tab_index,
+                              const remotemachine_t *m)
 {
-    memset(ctx, 0, sizeof(*ctx));
+    if (!ctx || !ctx->tabs || tab_index <= 0 || tab_index >= ctx->tab_count) {
+        return -1;
+    }
+    if (!m) return -1;
 
-    ctx->tabs = malloc(sizeof(machine_tab_t));
-    if (!ctx->tabs) {
-        perror("malloc tabs");
+    machine_tab_t *tab = &ctx->tabs[tab_index];
+
+    process_list *list = fetch_remote_processes(m);
+    if (!list) {
         return -1;
     }
 
-    ctx->tab_count = 1;
-    ctx->current_tab_index = 0;
-    ctx->running = 1;
-    ctx->scroll_offset = 0;
+    int old_selected_pid = -1;
+    if (tab->processes &&
+        tab->process_count > 0 &&
+        tab->selected_proc_index >= 0 &&
+        tab->selected_proc_index < tab->process_count) {
+        old_selected_pid = tab->processes[tab->selected_proc_index].pid;
+    }
 
-    machine_tab_t *tab = &ctx->tabs[0];
-    memset(tab, 0, sizeof(*tab));
-    snprintf(tab->hostname, sizeof(tab->hostname), "Local");
+    free(tab->processes);
     tab->processes = NULL;
     tab->process_count = 0;
-    tab->selected_proc_index = 0;
 
-    if (refresh_local(ctx) != 0) {
-        fprintf(stderr, "Unable to get local process list.\n");
-        free(ctx->tabs);
-        ctx->tabs = NULL;
-        ctx->tab_count = 0;
-        return -1;
+    tab->process_count = list_to_array(list, &tab->processes);
+    free_process_list(list);
+
+    tab->selected_proc_index = 0;
+    if (old_selected_pid != -1) {
+        for (int i = 0; i < tab->process_count; ++i) {
+            if (tab->processes[i].pid == old_selected_pid) {
+                tab->selected_proc_index = i;
+                break;
+            }
+        }
+        if (tab->selected_proc_index >= tab->process_count) {
+            tab->selected_proc_index = tab->process_count - 1;
+        }
+        if (tab->selected_proc_index < 0) {
+            tab->selected_proc_index = 0;
+        }
     }
 
+    ctx->scroll_offset = 0;
     return 0;
 }
 
-static void send_signal_selected(ui_context_t *ctx, int signum)
+static void send_signal_selected(ui_context_t *ctx, int signum, remotemachine_t *remotes)
 {
     if (!ctx || ctx->tab_count == 0 || !ctx->tabs) {
         return;
@@ -146,8 +169,16 @@ static void send_signal_selected(ui_context_t *ctx, int signum)
     }
 
     int pid = tab->processes[tab->selected_proc_index].pid;
-    if (kill(pid, signum) == -1) {
-        perror("kill");
+
+    if (ctx->current_tab_index == 0) {
+        /* Onglet 0 : Local -> on utilise kill() système */
+        kill(pid, signum);
+    } else {
+        /* Onglet > 0 : Distant -> on utilise notre nouvelle fonction SSH */
+        /* L'onglet 1 correspond à remotes[0], l'onglet 2 à remotes[1], etc. */
+        if (remotes) {
+            send_remote_signal(&remotes[ctx->current_tab_index - 1], pid, signum);
+        }
     }
 }
 
@@ -158,23 +189,27 @@ static struct option long_options[] = {
     {"remote-server", required_argument, 0, 's'},
     {"username",      required_argument, 0, 'u'},
     {"password",      required_argument, 0, 'p'},
+    {"all",           no_argument,       0, 'a'},
     {0, 0, 0, 0}
 };
 
 int main(int argc, char **argv)
 {
     ui_context_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+
     remotemachine_t *remotes = NULL;
     size_t remote_count = 0;
-    char *conf_path = NULL;
+
+    char *conf_path  = NULL;
     char *cli_server = NULL;
-    char *cli_user = NULL;
-    char *cli_pass = NULL;
+    char *cli_user   = NULL;
+    char *cli_pass   = NULL;
+    int include_all  = 0;
+    int dry_run      = 0;
 
-    int dry_run = 0;
     int opt, opt_index = 0;
-
-    while ((opt = getopt_long(argc, argv, "hc:s:u:p:", long_options, &opt_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hc:s:u:p:a", long_options, &opt_index)) != -1) {
         switch (opt) {
         case 'h':
             print_help(argv[0]);
@@ -193,6 +228,9 @@ int main(int argc, char **argv)
             break;
         case 'p':
             cli_pass = optarg;
+            break;
+        case 'a':
+            include_all = 1;
             break;
         default:
             print_help(argv[0]);
@@ -221,9 +259,56 @@ int main(int argc, char **argv)
                            cli_user, cli_pass, "ssh");
     }
 
-    if (init_local_context(&ctx) != 0) {
+    /* Initialisation des onglets : au moins la machine locale */
+    ctx.tabs = malloc(sizeof(machine_tab_t) * (1 + (include_all ? (int)remote_count : 0)));
+    if (!ctx.tabs) {
+        perror("malloc tabs");
         free(remotes);
         return EXIT_FAILURE;
+    }
+    memset(ctx.tabs, 0, sizeof(machine_tab_t) * (1 + (include_all ? (int)remote_count : 0)));
+
+    ctx.tab_count = 1;
+    ctx.current_tab_index = 0;
+    ctx.running = 1;
+    ctx.scroll_offset = 0;
+
+    machine_tab_t *local_tab = &ctx.tabs[0];
+    snprintf(local_tab->hostname, sizeof(local_tab->hostname), "Local");
+    local_tab->processes = NULL;
+    local_tab->process_count = 0;
+    local_tab->selected_proc_index = 0;
+
+    if (refresh_local(&ctx) != 0) {
+        fprintf(stderr, "Unable to get local process list.\n");
+        free(ctx.tabs);
+        free(remotes);
+        return EXIT_FAILURE;
+    }
+
+    /* Onglets distants si demandé */
+    if (include_all && remote_count > 0) {
+        for (size_t i = 0; i < remote_count; ++i) {
+            machine_tab_t *tab = &ctx.tabs[ctx.tab_count];
+            const remotemachine_t *m = &remotes[i];
+
+            if (m->name[0] != '\0')
+                snprintf(tab->hostname, sizeof(tab->hostname), "%s", m->name);
+            else
+                snprintf(tab->hostname, sizeof(tab->hostname), "%s", m->host);
+
+            tab->processes = NULL;
+            tab->process_count = 0;
+            tab->selected_proc_index = 0;
+
+            process_list *rlist = fetch_remote_processes(m);
+            if (rlist) {
+                tab->process_count = list_to_array(rlist, &tab->processes);
+                free_process_list(rlist);
+            }
+
+            ctx.tab_count++;
+        }
     }
 
     ui_init();
@@ -231,6 +316,7 @@ int main(int argc, char **argv)
     while (ctx.running) {
         ui_draw(&ctx);
         int action = ui_input(&ctx);
+
         switch (action) {
         case KEY_F(1):
             ui_show_help_screen(&ctx);
@@ -239,23 +325,37 @@ int main(int argc, char **argv)
             ui_search_process_by_name(&ctx);
             break;
         case KEY_F(5):
-            send_signal_selected(&ctx, SIGSTOP);
-            refresh_local(&ctx);
+            send_signal_selected(&ctx, SIGSTOP, remotes);
+            /* Rafraichissement intelligent : si local on refresh local, sinon remote */
+            if (ctx.current_tab_index == 0) refresh_local(&ctx);
+            else refresh_remote_tab(&ctx, ctx.current_tab_index, &remotes[ctx.current_tab_index - 1]);
             break;
+
         case KEY_F(6):
-            send_signal_selected(&ctx, SIGTERM);
-            refresh_local(&ctx);
+            send_signal_selected(&ctx, SIGTERM, remotes);
+            if (ctx.current_tab_index == 0) refresh_local(&ctx);
+            else refresh_remote_tab(&ctx, ctx.current_tab_index, &remotes[ctx.current_tab_index - 1]);
             break;
+
         case KEY_F(7):
-            send_signal_selected(&ctx, SIGKILL);
-            refresh_local(&ctx);
+            send_signal_selected(&ctx, SIGKILL, remotes);
+            if (ctx.current_tab_index == 0) refresh_local(&ctx);
+            else refresh_remote_tab(&ctx, ctx.current_tab_index, &remotes[ctx.current_tab_index - 1]);
             break;
+
         case KEY_F(8):
-            send_signal_selected(&ctx, SIGCONT);
-            refresh_local(&ctx);
+            send_signal_selected(&ctx, SIGCONT, remotes);
+            if (ctx.current_tab_index == 0) refresh_local(&ctx);
+            else refresh_remote_tab(&ctx, ctx.current_tab_index, &remotes[ctx.current_tab_index - 1]);
             break;
         case KEY_F(9):
+            /* Refresh local et remotes */
             refresh_local(&ctx);
+            if (include_all && remote_count > 0) {
+                for (int t = 1; t < ctx.tab_count; ++t) {
+                    refresh_remote_tab(&ctx, t, &remotes[t - 1]);
+                }
+            }
             break;
         default:
             break;
@@ -270,7 +370,7 @@ int main(int argc, char **argv)
         }
         free(ctx.tabs);
     }
-
     free(remotes);
+
     return EXIT_SUCCESS;
 }
