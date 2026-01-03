@@ -1,28 +1,40 @@
 #include "ui.h"
-
 #include <string.h>
 
 static void draw_header(int width)
 {
-    mvhline(1, 0, '-', width);
+    // Ligne 0 est réservée aux onglets (ne pas toucher ici)
+
+    // Ligne 1 : Le titre et la barre du haut
+    mvhline(1, 0, '-', width); 
     mvprintw(1, 2, " Process Manager (Network version) ");
-    mvprintw(2, 0, "PID      USER            %CPU   %MEM  S  COMMAND");
+    
+    // Ligne 2 : Les colonnes (PID, USER...)
+    mvprintw(2, 0, "PID      USER            %%CPU   %%MEM  S COMMAND");
+    
+    // Ligne 3 : Barre de séparation sous les colonnes
     mvhline(3, 0, '-', width);
 }
 
 static void draw_tabs(ui_context_t *ctx, int width)
 {
+    // Efface la ligne du haut
     mvhline(0, 0, ' ', width);
-    mvprintw(0, width - 20, "Tabs: %d | Idx: %d",
-             ctx->tab_count, ctx->current_tab_index);
+    
+    // Affiche le nombre d'onglets pour le débogage (en haut à droite)
+    mvprintw(0, width - 20, "Tabs: %d | Idx: %d", ctx->tab_count, ctx->current_tab_index);
 
     for (int i = 0; i < ctx->tab_count; ++i) {
-        int x = 2 + i * 25;
+        // Espace plus large entre les onglets
+        int x = 2 + i * 25; 
+        
         if (i == ctx->current_tab_index) {
+            // Onglet ACTIF : Gras + Reverse + Flèches
             attron(A_REVERSE | A_BOLD);
             mvprintw(0, x, " >> %s << ", ctx->tabs[i].hostname);
             attroff(A_REVERSE | A_BOLD);
         } else {
+            // Onglet INACTIF
             mvprintw(0, x, " [%s] ", ctx->tabs[i].hostname);
         }
     }
@@ -46,8 +58,8 @@ void ui_draw(ui_context_t *ctx)
 {
     int height, width;
     getmaxyx(stdscr, height, width);
-
     clear();
+
     draw_tabs(ctx, width);
     draw_header(width);
 
@@ -91,7 +103,6 @@ void ui_draw(ui_context_t *ctx)
     mvhline(height - 1, 0, '-', width);
     mvprintw(height - 1, 2,
              "F1:HELP F2/F3:TABS F4:SEARCH F5:STOP F6:TERM F7:KILL F8:CONT F9:REFRESH q:quit");
-
     refresh();
 }
 
@@ -129,7 +140,6 @@ void ui_show_help_screen(const ui_context_t *ctx)
     mvwprintw(win, 9, 2, "F8 : send SIGCONT (resume)");
     mvwprintw(win, 10, 2, "F9 : refresh the process list");
     mvwprintw(win, box_height - 2, 2, "Press any key to close help...");
-
     wrefresh(win);
     wgetch(win);
     delwin(win);
@@ -156,7 +166,6 @@ void ui_search_process_by_name(ui_context_t *ctx)
     const char *prompt = "Search (command) : ";
 
     curs_set(1);
-
     while (1) {
         move(height - 1, 0);
         clrtoeol();
@@ -180,7 +189,6 @@ void ui_search_process_by_name(ui_context_t *ctx)
             query[len] = '\0';
         }
     }
-
     curs_set(0);
 
     if (query[0] == '\0') {
@@ -199,7 +207,7 @@ void ui_search_process_by_name(ui_context_t *ctx)
     if (found != -1) {
         tab->selected_proc_index = found;
 
-        int list_top = 4;
+        int list_top = 3;
         int max_rows = height - list_top - 1;
         if (max_rows < 1) max_rows = 1;
 
@@ -208,6 +216,7 @@ void ui_search_process_by_name(ui_context_t *ctx)
         } else if (found >= ctx->scroll_offset + max_rows) {
             ctx->scroll_offset = found - max_rows + 1;
         }
+
         if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
     } else {
         move(height - 2, 0);
@@ -233,7 +242,8 @@ int ui_input(ui_context_t *ctx)
 
     int height, width;
     getmaxyx(stdscr, height, width);
-    int list_top = 4;
+
+    int list_top = 3;
     int max_rows = height - list_top - 1;
     if (max_rows < 1) max_rows = 1;
 
@@ -242,6 +252,7 @@ int ui_input(ui_context_t *ctx)
     case KEY_F(10):
         ctx->running = 0;
         break;
+
     case KEY_F(2):
         ctx->current_tab_index++;
         if (ctx->current_tab_index >= ctx->tab_count) {
@@ -249,6 +260,7 @@ int ui_input(ui_context_t *ctx)
         }
         ctx->scroll_offset = 0;
         break;
+
     case KEY_F(3):
         ctx->current_tab_index--;
         if (ctx->current_tab_index < 0) {
@@ -256,6 +268,7 @@ int ui_input(ui_context_t *ctx)
         }
         ctx->scroll_offset = 0;
         break;
+
     case KEY_DOWN:
         if (tab->selected_proc_index < tab->process_count - 1) {
             tab->selected_proc_index++;
@@ -264,6 +277,7 @@ int ui_input(ui_context_t *ctx)
             }
         }
         break;
+
     case KEY_UP:
         if (tab->selected_proc_index > 0) {
             tab->selected_proc_index--;
@@ -273,6 +287,7 @@ int ui_input(ui_context_t *ctx)
             }
         }
         break;
+
     case KEY_NPAGE:
         tab->selected_proc_index += max_rows;
         if (tab->selected_proc_index >= tab->process_count) {
@@ -281,12 +296,14 @@ int ui_input(ui_context_t *ctx)
         ctx->scroll_offset = tab->selected_proc_index - max_rows + 1;
         if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
         break;
+
     case KEY_PPAGE:
         tab->selected_proc_index -= max_rows;
         if (tab->selected_proc_index < 0) tab->selected_proc_index = 0;
         ctx->scroll_offset = tab->selected_proc_index;
         if (ctx->scroll_offset < 0) ctx->scroll_offset = 0;
         break;
+
     case KEY_F(1):
     case KEY_F(4):
     case KEY_F(5):
@@ -295,6 +312,7 @@ int ui_input(ui_context_t *ctx)
     case KEY_F(8):
     case KEY_F(9):
         return ch;
+
     default:
         break;
     }
